@@ -68,12 +68,14 @@ func (a Action) OnRegexChanges() Action { // TODO
 	return a
 }
 
+// A Watcher watches file events and caches Action outputs.
 type Watcher struct {
 	sync.RWMutex
 	fsw   *fsnotify.Watcher
 	cache map[string]string
 }
 
+// Close destroys the inner fsnotify watcher to prevent memory leaks.
 func (w *Watcher) Close() {
 	w.fsw.Close()
 }
