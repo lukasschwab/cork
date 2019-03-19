@@ -68,19 +68,19 @@ func (a Action) OnRegexChanges() Action { // TODO
 	return a
 }
 
-type watcher struct {
+type Watcher struct {
 	sync.RWMutex
 	fsw   *fsnotify.Watcher
 	cache map[string]string
 }
 
-func (w *watcher) close() {
+func (w *Watcher) Close() {
 	w.fsw.Close()
 }
 
 // getCache threadsafely retrieves the value associated with KEY in a watcher
 // W's cache.
-func (w *watcher) getCache(key string) string {
+func (w *Watcher) getCache(key string) string {
 	w.RLock()
 	defer w.RUnlock()
 	if val, ok := w.cache[key]; ok {
@@ -91,53 +91,27 @@ func (w *watcher) getCache(key string) string {
 
 // setCache threadsafely sets the value associated with KEY in a watcher W's
 // cache.
-func (w *watcher) setCache(key string, val string) {
+func (w *Watcher) setCache(key string, val string) {
 	w.Lock()
 	defer w.Unlock()
 	w.cache[key] = val
 }
 
-// A Cork is a collection of watchers.
-//
-// TODO: can I just get rid of the cork abstraction?
-type Cork struct {
-	sync.RWMutex
-	cache    map[string]string
-	watchers []*watcher
-}
-
-// Init returns a pointer to a new cork. NOTE: Always call cork.Close() to avoid
-// leaking memory in fsnotify watchers.
-func Init() (*Cork, error) {
-	return &Cork{
-		watchers: make([]*watcher, 0),
-	}, nil
-}
-
-// Close closes all of the watchers associated with a Cork group.
-func (c *Cork) Close() {
-	for _, w := range c.watchers {
-		log.Println("Destroying a watcher.")
-		w.close()
-	}
-}
-
-// Add adds a new watcher to C; that watcher watches the files returned by S,
-// and applies action A upon events from those files.
+// Watch creates returns a new Watcher that watches the files returned by S,
+// and applies action A upon events from those files. You must call
+// watcher.Close() to prevent memory leaks to fsnotify watchers.
 //
 // TODO: rerun selectors to find new files. Alternatively, depend on filter:
 // watch all of the files in the cwd by default.
-func (c *Cork) Add(s Selector, a Action) error {
+func Watch(s Selector, a Action) (*Watcher, error) {
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	w := &watcher{
+	w := &Watcher{
 		fsw:   fsw,
 		cache: make(map[string]string),
 	}
-
-	c.watchers = append(c.watchers, w)
 
 	go func() {
 		for {
@@ -161,5 +135,5 @@ func (c *Cork) Add(s Selector, a Action) error {
 	}()
 
 	err = w.fsw.Add(s()[0])
-	return err
+	return w, err
 }
