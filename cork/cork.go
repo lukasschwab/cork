@@ -1,7 +1,12 @@
 package cork
 
 import (
+	"crypto/md5"
+	"errors"
+	"fmt"
+	"io"
 	"log"
+	"os"
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
@@ -13,18 +18,18 @@ type Event struct {
 
 type FileSelector func() []string
 
-type TriggerFilter func(e Event) bool
+type TriggerFilter func(e Event, cached string) bool
 
-type ActionIntoCache func(e Event, cached string) string
+type ActionToCache func(e Event, cached string) string
 
 type ActionGroup struct {
 	Selector FileSelector
 	Filter   TriggerFilter
-	Action   ActionIntoCache
+	Action   ActionToCache
 }
 
 type Cork struct {
-  sync.RWMutex
+	sync.RWMutex
 	cache    map[string]string
 	watchers []*fsnotify.Watcher
 }
@@ -78,8 +83,9 @@ func (c *Cork) Add(ag ActionGroup) error {
 					return
 				}
 				e := Event{event}
-				if ag.Filter(e) {
-					newVal := ag.Action(e, c.GetCache(e.Name))
+				cached := c.GetCache(e.Name)
+				if ag.Filter(e, cached) {
+					newVal := ag.Action(e, cached)
 					c.SetCache(e.Name, newVal)
 				}
 			case err, ok := <-w.Errors:
@@ -95,4 +101,44 @@ func (c *Cork) Add(ag ActionGroup) error {
 	err = w.Add(ag.Selector()[0])
 
 	return nil
+}
+
+func ActWhenFileChanges(ag ActionGroup) (ActionGroup, error) {
+	if ag.Selector == nil {
+		return ActionGroup{}, errors.New("No FileSelector defined.")
+	}
+	return ActionGroup{
+		Selector: ag.Selector,
+		Filter: func(e Event, cached string) bool {
+			return ag.Filter(e, cached) && cached != fileHash(e.Name)
+		},
+		Action: func(e Event, cached string) string {
+			if ag.Action != nil {
+				ag.Action(e, cached)
+			}
+			return fileHash(e.Name) // TODO: get the real hash.
+		},
+	}, nil
+}
+
+func fileHash(name string) string {
+	f, err := os.Open(name)
+	if err != nil {
+		log.Println("Failed to open file:", name)
+		return ""
+	}
+	defer f.Close()
+
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		log.Println("Error generating hash for file:", name)
+		return ""
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// TODO: uses regex to filter for a subset of the file to check changes on.
+// Useful: https://golang.org/pkg/regexp/#Regexp.FindAllString
+func ActWhenRegexChanges() {
+	return
 }

@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"os"
+	"os/exec"
 	"time"
 
 	"./cork"
@@ -13,32 +14,32 @@ func main() {
 
 	ag := cork.ActionGroup{
 		Selector: func() []string {
-			log.Println("From MAIN: selector running.")
 			return []string{"./testdir"}
 		},
-		Filter: func(e cork.Event) bool {
+		Filter: func(e cork.Event, cached string) bool {
 			return true
 		},
 		Action: func(e cork.Event, cached string) string {
-			return "Cache this, boys!"
+			return cached
 		},
 	}
 	c.Add(ag)
 
-	two := cork.ActionGroup{
+	two, _ := cork.ActWhenFileChanges(cork.ActionGroup{
 		Selector: func() []string {
-			log.Println("From MAIN: special selector running.")
-			return []string{"./testdir/special"}
+			return []string{"./testdir"}
 		},
-		Filter: func(e cork.Event) bool {
+		Filter: func(e cork.Event, cached string) bool {
 			return true
 		},
 		Action: func(e cork.Event, cached string) string {
-			return "Special cache."
+			cmd := exec.Command("ls", ".").Output()
+			cmd.Stdout = os.Stdout
+			return "" // Return value is discarded.
 		},
-	}
+	})
 	c.Add(two)
 
-  // FIXME: run indefinitely.
+	// FIXME: run indefinitely.
 	time.Sleep(300 * time.Second)
 }
