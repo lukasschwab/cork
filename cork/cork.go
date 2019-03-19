@@ -49,5 +49,31 @@ func (c *Cork) Add(ag ActionGroup) error {
   }
   c.watchers = append(c.watchers, w)
 
+  go func() {
+    for {
+      select {
+      case event, ok := <-w.Events:
+        if !ok {
+          log.Println("There was an error in an event consumer [events].")
+          return
+        }
+        e := Event{event}
+        if ag.Filter(e) {
+          log.Println("Filter true.")
+          ag.Action(e)
+        } else {
+          log.Println("Filter false.")
+        }
+      case err, ok := <- w.Errors:
+        if !ok {
+          log.Println("There was an error in an event consumer [errs].")
+        }
+        log.Println("error:", err)
+      }
+    }
+  }()
+
+  err = w.Add(ag.Selector()[0])
+
   return nil
 }
