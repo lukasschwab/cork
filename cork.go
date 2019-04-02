@@ -1,3 +1,4 @@
+// cork is a filesystem event handler.
 package cork
 
 import (
