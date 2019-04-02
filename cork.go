@@ -95,7 +95,6 @@ func (w *Watcher) Close() {
 
 // getCache threadsafely retrieves the value associated with KEY in a watcher
 // W's cache. It returns an empty string if no value has been cached.
-// FIXME: return nil by default.
 func (w *Watcher) getCache(key string) string {
 	w.RLock()
 	defer w.RUnlock()
@@ -117,8 +116,9 @@ func (w *Watcher) setCache(key string, val string) {
 // and applies action A upon events from those files. You must call
 // watcher.Close() to prevent memory leaks to fsnotify watchers.
 //
-// TODO: rerun selectors to find new files. Alternatively, depend on filter:
-// watch all of the files in the cwd by default.
+// TODO: rerun selectors to find new files. This can be achieved by feeding
+// timer events to a channel as in `qt`. Store a set of the currently watched
+// files in the watcher.
 func Watch(s Selector, a Action) (*Watcher, error) {
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {

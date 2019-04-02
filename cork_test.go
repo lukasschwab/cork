@@ -3,7 +3,6 @@ package cork
 import (
 	"log"
 	"testing"
-	"time"
 )
 
 func Example() {
@@ -27,8 +26,9 @@ func Example() {
 	}, specialAction.OnFileChange().OnFileWrite())
 	defer w2.Close()
 
-	// FIXME: run indefinitely.
-	time.Sleep(300 * time.Second)
+	// Run indefinitely.
+	var c chan struct{}
+	<-c
 }
 
 func TestCork(t *testing.T) {
