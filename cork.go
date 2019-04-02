@@ -71,7 +71,7 @@ func (a Action) OnFileChange() Action {
 func (a Action) OnRegexChange(regex string) Action {
 	return a.onSummaryChange(func(name string) string {
 		re := regexp.MustCompile(regex)
-    // TODO: avoid reading whole file if possible.
+		// TODO: avoid reading whole file if possible.
 		b, err := ioutil.ReadFile(name)
 		if err != nil {
 			log.Println("Failed to open file:", name)
@@ -150,6 +150,9 @@ func Watch(s Selector, a Action) (*Watcher, error) {
 		}
 	}()
 
-	err = w.fsw.Add(s()[0])
+	for _, name := range s() {
+		err = w.fsw.Add(name)
+	}
+
 	return w, err
 }
