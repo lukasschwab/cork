@@ -1,12 +1,14 @@
-// cork is a filesystem event handler.
+// Package cork is a filesystem event handler.
 package cork
 
 import (
 	"crypto/md5"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
@@ -34,39 +36,49 @@ func (a Action) OnFileWrite() Action {
 	}
 }
 
+func (a Action) onSummaryChange(summarizer func(string) string) Action {
+	return func(e Event, cached string) string {
+		newSummary := summarizer(e.Name)
+		if cached != newSummary {
+			a(e, cached)
+		}
+		return newSummary
+	}
+}
+
 // OnFileChange runs A iff the hash of the event file has changed. NOTE: this
 // overrides A's cache values.
 func (a Action) OnFileChange() Action {
-	return func(e Event, cached string) string {
-		newHash := fileHash(e.Name)
-		if cached != newHash {
-			a(e, cached)
+	return a.onSummaryChange(func(name string) string {
+		f, err := os.Open(name)
+		if err != nil {
+			log.Println("Failed to open file:", name)
+			return ""
 		}
-		return newHash
-	}
+		defer f.Close()
+
+		h := md5.New()
+		if _, err := io.Copy(h, f); err != nil {
+			log.Println("Error generating hash for file:", name)
+			return ""
+		}
+		return fmt.Sprintf("%x", h.Sum(nil))
+	})
 }
 
-// fileHash returns the md5 hash of file NAME.
-func fileHash(name string) string {
-	f, err := os.Open(name)
-	if err != nil {
-		log.Println("Failed to open file:", name)
-		return ""
-	}
-	defer f.Close()
-
-	h := md5.New()
-	if _, err := io.Copy(h, f); err != nil {
-		log.Println("Error generating hash for file:", name)
-		return ""
-	}
-	return fmt.Sprintf("%x", h.Sum(nil))
-}
-
-// OnRegexChanges runs A iff the result of running regex R on the event file is
-// novel.
-func (a Action) OnRegexChanges() Action { // TODO
-	return a
+// OnRegexChange runs A iff the result of finding all REGEX on the event file is
+// novel. For regex documentation see package `regexp`.
+func (a Action) OnRegexChange(regex string) Action {
+	return a.onSummaryChange(func(name string) string {
+		re := regexp.MustCompile(regex)
+    // TODO: avoid reading whole file if possible.
+		b, err := ioutil.ReadFile(name)
+		if err != nil {
+			log.Println("Failed to open file:", name)
+			return ""
+		}
+		return fmt.Sprintf("%q\n", re.FindAll(b, -1))
+	})
 }
 
 // A Watcher watches file events and caches Action outputs.
@@ -82,7 +94,8 @@ func (w *Watcher) Close() {
 }
 
 // getCache threadsafely retrieves the value associated with KEY in a watcher
-// W's cache.
+// W's cache. It returns an empty string if no value has been cached.
+// FIXME: return nil by default.
 func (w *Watcher) getCache(key string) string {
 	w.RLock()
 	defer w.RUnlock()
