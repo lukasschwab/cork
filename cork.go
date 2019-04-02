@@ -1,4 +1,4 @@
-// Package cork is a filesystem event handler.
+// Package cork is a file event handler.
 package cork
 
 import (
