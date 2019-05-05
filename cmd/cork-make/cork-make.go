@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/kballard/go-shellquote"
 	"github.com/lukasschwab/cork"
 )
 
@@ -73,13 +74,18 @@ func parseCommand(patterns []string, args []string) {
 
 // watch spins up a watcher for the (PATTERNS, CMDSTRING) pair.
 func watch(patterns []string, cmdString string) {
-	println(g("» ['%s'] → %s", strings.Join(patterns, "', '"), cmdString))
-	w, err := cork.Watch(selectPatterns(patterns), runCmd(cmdString).OnFileChange())
+	cmd, err := runCmd(cmdString)
+	if err != nil {
+		print(r("Error parsing command %s: %s\n", cmdString, err))
+		return
+	}
+	w, err := cork.Watch(selectPatterns(patterns), cmd.OnFileChange())
 	if err != nil {
 		println(r("Error creating watcher:"), err)
 		return
 	}
 	allWatchers = append(allWatchers, w)
+	println(g("» ['%s'] → %s", strings.Join(patterns, "', '"), cmdString))
 }
 
 // selectPatterns returns the list of filenames that match the PATTERNS.
@@ -87,7 +93,10 @@ func selectPatterns(patterns []string) cork.Selector {
 	return func() []string {
 		var names = make(map[string]struct{})
 		for _, p := range patterns {
-			matches, _ := filepath.Glob(p) // FIXME: handle errors.
+			matches, err := filepath.Glob(p)
+			if err != nil {
+				println(r("Error parsing '%s': %s", p, err))
+			}
 			for _, name := range matches {
 				if _, in := names[name]; !in {
 					names[name] = struct{}{}
@@ -104,8 +113,11 @@ func selectPatterns(patterns []string) cork.Selector {
 	}
 }
 
-func runCmd(cmdString string) cork.Action {
-	splitCmd := strings.Split(cmdString, " ") // FIXME: breaks on spaces in command args.
+func runCmd(cmdString string) (cork.Action, error) {
+	splitCmd, err := shellquote.Split(cmdString)
+	if err != nil {
+		return nil, err
+	}
 	return func(e cork.Event, cached string) string {
 		println(b("%s → %s", e.Name, cmdString))
 		out, err := exec.Command(splitCmd[0], splitCmd[1:]...).Output()
@@ -116,5 +128,5 @@ func runCmd(cmdString string) cork.Action {
 			println(b("output:"), string(out))
 		}
 		return "" // Discarded by OnFileChange().
-	}
+	}, nil
 }
