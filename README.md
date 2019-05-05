@@ -7,6 +7,7 @@ Package `cork` is a file event handler.
 ## To do
 
 - [ ] Periodic reselection.
+- [ ] `Action` concurrency, bottlenecking.
 - [ ] `cork-make`: CLI man/help.
 - [ ] `cork-make`: clean up logging (split err/out).
 - [ ] `cork-make`: tests.
