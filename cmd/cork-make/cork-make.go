@@ -9,18 +9,21 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-
 	"github.com/lukasschwab/cork"
 )
 
-var l = log.New(os.Stderr, "", 0)
+// TODO: clean up logging.
+var l = log.New(os.Stdout, "", 0)
 
+// allWatchers is a global collection of watchers for cleanup.
 var allWatchers = make([]*cork.Watcher, 0)
 
+// Color-logging helpers.
 var r = color.RedString
 var g = color.GreenString
 var b = color.BlueString
 
+// main kicks off the arg consumption cycle, then waits for an interrupt.
 func main() {
 	defer cleanup()
 	pwd, _ := filepath.Abs(".")
@@ -35,12 +38,14 @@ func main() {
 	}
 }
 
+// cleanup deprovisions watchers to prevent memory leaks.
 func cleanup() {
 	for _, w := range allWatchers {
 		w.Close()
 	}
 }
 
+// parsePatterns selects the leading patterns in the remaining args.
 func parsePatterns(args []string) {
 	if len(args) == 0 {
 		println()
@@ -56,6 +61,7 @@ func parsePatterns(args []string) {
 	parseCommand(args[1:i], args[i:])
 }
 
+// parseCommand selects the leading command from the remaining args.
 func parseCommand(patterns []string, args []string) {
 	if len(args) < 2 || (args[0] != "-r" && args[0] != "--run") {
 		println(r("Error: patterns must be followed by a -r or --run."))
@@ -65,6 +71,7 @@ func parseCommand(patterns []string, args []string) {
 	parsePatterns(args[2:])
 }
 
+// watch spins up a watcher for the (PATTERNS, CMDSTRING) pair.
 func watch(patterns []string, cmdString string) {
 	println(g("» ['%s'] → %s", strings.Join(patterns, "', '"), cmdString))
 	w, err := cork.Watch(selectPatterns(patterns), runCmd(cmdString).OnFileChange())
