@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"strings"
 
+	"github.com/fatih/color"
+
 	"github.com/lukasschwab/cork"
 )
 
@@ -14,6 +16,10 @@ var stderr = log.New(os.Stderr, "", 0)
 var stdout = log.New(os.Stderr, "", 0)
 
 var allWatchers = make([]*cork.Watcher, 0)
+
+var r = color.RedString
+var g = color.GreenString
+var b = color.BlueString
 
 func main() {
 	defer cleanup()
@@ -28,7 +34,6 @@ func main() {
 }
 
 func cleanup() {
-	stdout.Println("Cleaning up.")
 	for _, w := range allWatchers {
 		w.Close()
 	}
@@ -36,6 +41,7 @@ func cleanup() {
 
 func parsePatterns(args []string) {
 	if len(args) == 0 {
+		println()
 		return
 	}
 	if args[0] != "-p" && args[0] != "--pattern" {
@@ -58,7 +64,7 @@ func parseCommand(patterns []string, args []string) {
 }
 
 func watch(patterns []string, cmdString string) {
-	stdout.Printf("Watching ['%s'] → %s", strings.Join(patterns, "', '"), cmdString)
+	stdout.Print(g("» ['%s'] → %s", strings.Join(patterns, "', '"), cmdString))
 	w, err := cork.Watch(cork.SelectPatterns(patterns), runCmd(cmdString).OnFileChange())
 	if err != nil {
 		stderr.Println("Error creating watcher:", err)
@@ -70,14 +76,14 @@ func watch(patterns []string, cmdString string) {
 func runCmd(cmdString string) cork.Action {
 	splitCmd := strings.Split(cmdString, " ") // FIXME: breaks on spaces in command args.
 	return func(e cork.Event, cached string) string {
-		stdout.Printf("%s → %s", e.Name, cmdString)
+		stdout.Print(b("%s → %s", e.Name, cmdString))
 		out, err := exec.Command(splitCmd[0], splitCmd[1:]...).Output()
 		if err != nil {
-			stderr.Println("Error:", err)
+			stderr.Println(r("Error:"), err)
 		}
 		if out != nil {
-			stdout.Println("Output:", string(out))
+			stdout.Println(b("output:"), string(out))
 		}
-		return "" // Discarded for hash.
+		return "" // Discarded by OnFileChange().
 	}
 }
