@@ -1,3 +1,6 @@
 # No compiled binaries.
 cork-make
 main
+
+# No test utils.
+testfile*

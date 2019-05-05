@@ -1,7 +1,10 @@
-run: build test
+run: test
 
 build:
 	go build -o cork-make
 
-test:
-	./cork-make -p "a first pattern" "a second pattern" -r "woohoo" -p "secondGroup" -r "testing"
+test: build
+	./cork-make -p "testfile" "testfile2" -r "date" -p "testfile3" -r "ls"
+
+clean:
+	rm -f cork-make
