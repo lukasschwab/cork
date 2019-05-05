@@ -4,6 +4,7 @@
 
 + `cork-make` has no special treatment for `make` targets.
 + `cork-make` allows the specification of multiple script targets (resolves [watchman:#688](https://github.com/facebook/watchman/issues/688)).
++ `cork-make` doesn't block on script target completion.
 
 ## Getting started
 
