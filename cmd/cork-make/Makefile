@@ -1,7 +1,7 @@
 run: test
 
 build:
-	go build -o cork-make
+	go build
 
 test: build
 	./cork-make -p "testfile" "testfile2" -r "date" -p "testfile3" -r "ls"
