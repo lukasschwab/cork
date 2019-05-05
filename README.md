@@ -6,5 +6,4 @@ Package `cork` is a file event handler.
 
 ## To do
 
-- [ ] `watchman-make`-style executable.
 - [ ] Periodic reselection.

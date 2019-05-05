@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 
 	"github.com/fatih/color"
@@ -23,6 +24,8 @@ var b = color.BlueString
 
 func main() {
 	defer cleanup()
+	pwd, _ := filepath.Abs(".")
+	stdout.Printf("Relative to %s:", pwd)
 	parsePatterns(os.Args[1:])
 
 	c := make(chan os.Signal)
@@ -41,7 +44,7 @@ func cleanup() {
 
 func parsePatterns(args []string) {
 	if len(args) == 0 {
-		println()
+		stdout.Println()
 		return
 	}
 	if args[0] != "-p" && args[0] != "--pattern" {
@@ -64,13 +67,36 @@ func parseCommand(patterns []string, args []string) {
 }
 
 func watch(patterns []string, cmdString string) {
+	// TODO: print PWD for relative paths.
 	stdout.Print(g("» ['%s'] → %s", strings.Join(patterns, "', '"), cmdString))
-	w, err := cork.Watch(cork.SelectPatterns(patterns), runCmd(cmdString).OnFileChange())
+	w, err := cork.Watch(selectPatterns(patterns), runCmd(cmdString).OnFileChange())
 	if err != nil {
 		stderr.Println("Error creating watcher:", err)
 		return
 	}
 	allWatchers = append(allWatchers, w)
+}
+
+// selectPatterns returns the list of filenames that match the PATTERNS.
+func selectPatterns(patterns []string) cork.Selector {
+	return func() []string {
+		var names = make(map[string]struct{})
+		for _, p := range patterns {
+			matches, _ := filepath.Glob(p) // FIXME: handle errors.
+			for _, name := range matches {
+				if _, in := names[name]; !in {
+					names[name] = struct{}{}
+				}
+			}
+		}
+		unique := make([]string, len(names))
+		i := 0
+		for name := range names {
+			unique[i] = name
+			i++
+		}
+		return unique
+	}
 }
 
 func runCmd(cmdString string) cork.Action {

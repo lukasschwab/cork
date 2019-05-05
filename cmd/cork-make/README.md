@@ -1,5 +1,10 @@
 # cork-make
 
+`cork-make` is a file event handler CLI akin to [`watchman-make`](https://facebook.github.io/watchman/docs/watchman-make.html). Some key differences:
+
++ `cork-make` has no special treatment for `make` targets.
++ `cork-make` allows the specification of multiple script targets (resolves [watchman:#688](https://github.com/facebook/watchman/issues/688)).
+
 ## Getting started
 
 In this subdirectory, run:
