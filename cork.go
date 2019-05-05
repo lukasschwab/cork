@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sync"
 
@@ -21,6 +22,28 @@ type Event struct {
 
 // A Selector returns a list of relative file or directory names.
 type Selector func() []string
+
+// SelectPatterns returns the list of filenames that match the PATTERNS.
+func SelectPatterns(patterns []string) Selector {
+	return func() []string {
+		var names = make(map[string]struct{})
+		for _, p := range patterns {
+			matches, _ := filepath.Glob(p) // FIXME: handle errors.
+			for _, name := range matches {
+				if _, in := names[name]; !in {
+					names[name] = struct{}{}
+				}
+			}
+		}
+		unique := make([]string, len(names))
+		i := 0
+		for name := range names {
+			unique[i] = name
+			i++
+		}
+		return unique
+	}
+}
 
 // An Action receives an event and the previous cached value for the event file
 // name. It returns the new value to be cached.
