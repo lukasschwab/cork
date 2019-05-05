@@ -13,8 +13,7 @@ import (
 	"github.com/lukasschwab/cork"
 )
 
-var stderr = log.New(os.Stderr, "", 0)
-var stdout = log.New(os.Stderr, "", 0)
+var l = log.New(os.Stderr, "", 0)
 
 var allWatchers = make([]*cork.Watcher, 0)
 
@@ -25,7 +24,7 @@ var b = color.BlueString
 func main() {
 	defer cleanup()
 	pwd, _ := filepath.Abs(".")
-	stdout.Printf("Relative to %s:", pwd)
+	l.Printf("Relative to %s:", pwd)
 	parsePatterns(os.Args[1:])
 
 	c := make(chan os.Signal)
@@ -44,11 +43,11 @@ func cleanup() {
 
 func parsePatterns(args []string) {
 	if len(args) == 0 {
-		stdout.Println()
+		println()
 		return
 	}
 	if args[0] != "-p" && args[0] != "--pattern" {
-		stderr.Println("First argument must be a pattern.")
+		println(r("Error: first argument must be a pattern."))
 		os.Exit(2)
 	}
 	var i int
@@ -59,7 +58,7 @@ func parsePatterns(args []string) {
 
 func parseCommand(patterns []string, args []string) {
 	if len(args) < 2 || (args[0] != "-r" && args[0] != "--run") {
-		stderr.Println("Patterns must be followed by a -r or --run.")
+		println(r("Error: patterns must be followed by a -r or --run."))
 		os.Exit(2)
 	}
 	watch(patterns, args[1])
@@ -67,11 +66,10 @@ func parseCommand(patterns []string, args []string) {
 }
 
 func watch(patterns []string, cmdString string) {
-	// TODO: print PWD for relative paths.
-	stdout.Print(g("» ['%s'] → %s", strings.Join(patterns, "', '"), cmdString))
+	println(g("» ['%s'] → %s", strings.Join(patterns, "', '"), cmdString))
 	w, err := cork.Watch(selectPatterns(patterns), runCmd(cmdString).OnFileChange())
 	if err != nil {
-		stderr.Println("Error creating watcher:", err)
+		println(r("Error creating watcher:"), err)
 		return
 	}
 	allWatchers = append(allWatchers, w)
@@ -102,13 +100,13 @@ func selectPatterns(patterns []string) cork.Selector {
 func runCmd(cmdString string) cork.Action {
 	splitCmd := strings.Split(cmdString, " ") // FIXME: breaks on spaces in command args.
 	return func(e cork.Event, cached string) string {
-		stdout.Print(b("%s → %s", e.Name, cmdString))
+		println(b("%s → %s", e.Name, cmdString))
 		out, err := exec.Command(splitCmd[0], splitCmd[1:]...).Output()
 		if err != nil {
-			stderr.Println(r("Error:"), err)
+			println(r("Error:"), err)
 		}
 		if out != nil {
-			stdout.Println(b("output:"), string(out))
+			println(b("output:"), string(out))
 		}
 		return "" // Discarded by OnFileChange().
 	}
