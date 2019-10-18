@@ -122,7 +122,7 @@ func runCmd(cmdString string) (cork.Action, error) {
 		println(b("%s → %s", e.Name, cmdString))
 		out, err := exec.Command(splitCmd[0], splitCmd[1:]...).Output()
 		if err != nil {
-			println(r("Error:"), err)
+			println(r("Error:"), err.Error())
 		}
 		if out != nil {
 			println(b("output:"), string(out))
