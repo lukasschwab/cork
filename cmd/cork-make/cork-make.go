@@ -1,132 +1,125 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
-	"strings"
+	"syscall"
 
-	"github.com/fatih/color"
+	"github.com/charmbracelet/log"
+	"github.com/fsnotify/fsevents"
 	"github.com/kballard/go-shellquote"
-	"github.com/lukasschwab/cork"
+	"github.com/lukasschwab/cork/pkg/cork"
+	"github.com/lukasschwab/cork/pkg/filter"
+	"github.com/lukasschwab/cork/pkg/pattern"
 )
-
-// TODO: clean up logging.
-var l = log.New(os.Stdout, "", 0)
-
-// allWatchers is a global collection of watchers for cleanup.
-var allWatchers = make([]*cork.Watcher, 0)
-
-// Color-logging helpers.
-var r = color.RedString
-var g = color.GreenString
-var b = color.BlueString
 
 // main kicks off the arg consumption cycle, then waits for an interrupt.
 func main() {
-	defer cleanup()
-	pwd, _ := filepath.Abs(".")
-	l.Printf("Relative to %s:", pwd)
-	parsePatterns(os.Args[1:])
+	printConfigHeading()
 
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt)
-	select {
-	case <-c:
-		break
-	}
+	pairs := parse(os.Args[1:])
+	watch(pairs)
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	<-sigChan
 }
 
-// cleanup deprovisions watchers to prevent memory leaks.
-func cleanup() {
-	for _, w := range allWatchers {
-		w.Close()
-	}
+type configPair struct {
+	command     string
+	rawPatterns []string
+	patterns    []pattern.Pattern
 }
 
-// parsePatterns selects the leading patterns in the remaining args.
-func parsePatterns(args []string) {
-	if len(args) == 0 {
-		println()
-		return
-	}
-	if args[0] != "-p" && args[0] != "--pattern" {
-		println(r("Error: first argument must be a pattern."))
-		os.Exit(2)
-	}
-	var i int
-	for i = 1; i < len(args) && args[i][0] != '-'; i++ {
-	}
-	parseCommand(args[1:i], args[i:])
+func (p configPair) String() string {
+	return fmt.Sprintf("» %v → %s", p.rawPatterns, p.command)
 }
 
-// parseCommand selects the leading command from the remaining args.
-func parseCommand(patterns []string, args []string) {
-	if len(args) < 2 || (args[0] != "-r" && args[0] != "--run") {
-		println(r("Error: patterns must be followed by a -r or --run."))
-		os.Exit(2)
-	}
-	watch(patterns, args[1])
-	parsePatterns(args[2:])
-}
-
-// watch spins up a watcher for the (PATTERNS, CMDSTRING) pair.
-func watch(patterns []string, cmdString string) {
-	cmd, err := runCmd(cmdString)
+func (p configPair) Action() cork.Action {
+	action, err := execCommandAction(p.command)
 	if err != nil {
-		print(r("Error parsing command %s: %s\n", cmdString, err))
-		return
+		log.Fatalf("Error processing target command: %v", err)
 	}
-	w, err := cork.Watch(selectPatterns(patterns), cmd.OnFileChange())
-	if err != nil {
-		println(r("Error creating watcher:"), err)
-		return
+
+	filters := make([]filter.Func, len(p.patterns))
+	for i := range p.patterns {
+		filters[i] = p.patterns[i].Filter()
 	}
-	allWatchers = append(allWatchers, w)
-	println(g("» ['%s'] → %s", strings.Join(patterns, "', '"), cmdString))
+	action.Filters = append(action.Filters, filter.Any(filters...))
+
+	return action
 }
 
-// selectPatterns returns the list of filenames that match the PATTERNS.
-func selectPatterns(patterns []string) cork.Selector {
-	return func() []string {
-		var names = make(map[string]struct{})
-		for _, p := range patterns {
-			matches, err := filepath.Glob(p)
-			if err != nil {
-				println(r("Error parsing '%s': %s", p, err))
-			}
-			for _, name := range matches {
-				if _, in := names[name]; !in {
-					names[name] = struct{}{}
-				}
+func parse(args []string) (parsed []configPair) {
+	cur := configPair{}
+	for ; len(args) > 0; args = args[1:] {
+		switch args[0] {
+		// TODO: consider using filepath.SplitList and condensing multiple paths
+		// to a single positional arg.
+		case "-p", "--pattern":
+			continue
+		case "-r", "--run":
+			// Ingest the command immediately.
+			args = args[1:]
+			cur.command = args[0]
+			parsed = append(parsed, cur)
+			cur = configPair{}
+		default:
+			if p, err := pattern.FromString(args[0]); err != nil {
+				panic(err)
+			} else {
+				cur.rawPatterns = append(cur.rawPatterns, args[0])
+				cur.patterns = append(cur.patterns, p)
 			}
 		}
-		unique := make([]string, len(names))
-		i := 0
-		for name := range names {
-			unique[i] = name
-			i++
-		}
-		return unique
 	}
+
+	return parsed
 }
 
-func runCmd(cmdString string) (cork.Action, error) {
+func watch(pairs []configPair) {
+	patterns := []pattern.Pattern{}
+	actions := make([]cork.Action, len(pairs))
+
+	for i, pair := range pairs {
+		printConfigPair(pair)
+		patterns = append(patterns, pair.patterns...)
+		actions[i] = pair.Action()
+	}
+	println()
+
+	go func() {
+		watcher := cork.Watcher{
+			Paths:   patterns,
+			Filters: []filter.Func{},
+			Actions: actions,
+		}
+		if err := watcher.Watch(); err != nil {
+			log.Fatalf("Failed to init watcher: %v", err)
+		}
+	}()
+}
+
+// TODO: consider a flag for enabling async exec; ruins output order.
+func execCommandAction(cmdString string) (cork.Action, error) {
 	splitCmd, err := shellquote.Split(cmdString)
 	if err != nil {
-		return nil, err
+		return cork.Action{}, err
 	}
-	return func(e cork.Event, cached string) string {
-		println(b("%s → %s", e.Name, cmdString))
+
+	callback := func(e fsevents.Event) {
+		printEvent(e, cmdString)
 		out, err := exec.Command(splitCmd[0], splitCmd[1:]...).Output()
 		if err != nil {
-			println(r("Error:"), err.Error())
+			log.Error("Subprocess execution error", "message", err.Error())
 		}
 		if out != nil {
-			println(b("output:"), string(out))
+			// Bodge: make output visible.
+			println(string(out))
 		}
-		return "" // Discarded by OnFileChange().
-	}, nil
+	}
+
+	return cork.Action{Callback: callback}, nil
 }
