@@ -8,8 +8,5 @@ For a `watchman-make` alternative, see [`cork-make`](https://github.com/lukassch
 
 ## To do
 
-- [ ] Periodic reselection.
-- [ ] `Action` concurrency, bottlenecking.
 - [ ] `cork-make`: CLI man/help.
-- [ ] `cork-make`: clean up logging (split err/out; lock out concurrent cmd output).
 - [ ] `cork-make`: tests.
