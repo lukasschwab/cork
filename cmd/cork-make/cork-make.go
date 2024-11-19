@@ -2,15 +2,12 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
-	"strings"
 	"syscall"
 
-	"github.com/fatih/color"
+	"github.com/charmbracelet/log"
 	"github.com/fsnotify/fsevents"
 	"github.com/kballard/go-shellquote"
 	"github.com/lukasschwab/cork/pkg/cork"
@@ -18,41 +15,29 @@ import (
 	"github.com/lukasschwab/cork/pkg/pattern"
 )
 
-// var (
-// 	NonChmod filter.Func = filter.Not(filter.ByOp(fsnotify.Chmod))
-// )
-
-// TODO: use lipgloss
-// Color-logging helpers.
-var r = color.RedString
-var g = color.GreenString
-var b = color.BlueString
-
 // main kicks off the arg consumption cycle, then waits for an interrupt.
 func main() {
-	pwd, _ := filepath.Abs(".")
-	fmt.Printf(g("Relative to %s:\n"), pwd)
+	printConfigHeading()
 
 	pairs := parse(os.Args[1:])
 	watch(pairs)
 
-	// Create a channel to receive interrupt signals
 	sigChan := make(chan os.Signal, 1)
-
-	// Notify the channel when an interrupt signal is received (e.g., Ctrl+C)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	// Block until a signal is received
 	<-sigChan
 }
 
-type pair struct {
+type configPair struct {
 	command     string
 	rawPatterns []string
 	patterns    []pattern.Pattern
 }
 
-func (p pair) Action() cork.Action {
+func (p configPair) String() string {
+	return fmt.Sprintf("» %v → %s", p.rawPatterns, p.command)
+}
+
+func (p configPair) Action() cork.Action {
 	action, err := execCommandAction(p.command)
 	if err != nil {
 		log.Fatalf("Error processing target command: %v", err)
@@ -67,18 +52,20 @@ func (p pair) Action() cork.Action {
 	return action
 }
 
-func parse(args []string) (parsed []pair) {
-	cur := pair{}
+func parse(args []string) (parsed []configPair) {
+	cur := configPair{}
 	for ; len(args) > 0; args = args[1:] {
 		switch args[0] {
+		// TODO: consider using filepath.SplitList and condensing multiple paths
+		// to a single positional arg.
 		case "-p", "--pattern":
 			continue
 		case "-r", "--run":
-			// Ingest the command at the same time.
+			// Ingest the command immediately.
 			args = args[1:]
 			cur.command = args[0]
 			parsed = append(parsed, cur)
-			cur = pair{}
+			cur = configPair{}
 		default:
 			if p, err := pattern.FromString(args[0]); err != nil {
 				panic(err)
@@ -92,13 +79,12 @@ func parse(args []string) (parsed []pair) {
 	return parsed
 }
 
-func watch(pairs []pair) {
+func watch(pairs []configPair) {
 	patterns := []pattern.Pattern{}
 	actions := make([]cork.Action, len(pairs))
 
 	for i, pair := range pairs {
-		println(g("» ['%s'] → %s", strings.Join(pair.rawPatterns, "', '"), pair.command))
-
+		printConfigPair(pair)
 		patterns = append(patterns, pair.patterns...)
 		actions[i] = pair.Action()
 	}
@@ -116,6 +102,7 @@ func watch(pairs []pair) {
 	}()
 }
 
+// TODO: consider a flag for enabling async exec; ruins output order.
 func execCommandAction(cmdString string) (cork.Action, error) {
 	splitCmd, err := shellquote.Split(cmdString)
 	if err != nil {
@@ -123,13 +110,14 @@ func execCommandAction(cmdString string) (cork.Action, error) {
 	}
 
 	callback := func(e fsevents.Event) {
-		println(b("[%d] %s → %s", e.ID, e.Path, cmdString))
+		printEvent(e, cmdString)
 		out, err := exec.Command(splitCmd[0], splitCmd[1:]...).Output()
 		if err != nil {
-			println(r("Error:"), err.Error())
+			log.Error("Subprocess execution error", "message", err.Error())
 		}
 		if out != nil {
-			println(b("output:"), string(out))
+			// Bodge: make output visible.
+			println(string(out))
 		}
 	}
 

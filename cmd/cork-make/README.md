@@ -4,7 +4,6 @@
 
 + `cork-make` has no special treatment for `make` targets.
 + `cork-make` allows the specification of multiple script targets (resolves [watchman:#688](https://github.com/facebook/watchman/issues/688)).
-+ `cork-make` doesn't block on script target completion.
 
 ## Getting started
 
@@ -21,10 +20,10 @@ $ go install
 ```bash
 $ cork-make -p [patterns...] -r [command]
 $ # Basic example: one pattern group to one command.
-$ cork-make -p README.md -r "cat README.md"
+$ cork-make -p "README.md" -r "cat README.md"
 $ # Multiple pattern groups to different commands.
-$ cork-make -p *.go -r "go build" \
-            -p README.md -r "cat README.md"
+$ cork-make -p "*.go" -r "go build" \
+            -p "README.md" -r "cat README.md"
 $ # Multiple pattern groups to one command.
-$ cork-make -p *.go *.md -r date
+$ cork-make -p "*.go" "*.md" -r date
 ```

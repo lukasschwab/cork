@@ -22,7 +22,7 @@ type Watcher struct {
 	Filters []filter.Func
 	Actions []Action
 
-	stream fsevents.EventStream
+	stream *fsevents.EventStream
 }
 
 // Watch events on w.Paths, filter with w.Filters, and trigger w.Actions in a
@@ -33,7 +33,7 @@ func (w *Watcher) Watch() error {
 		pathsToWatch[i] = path.StaticPrefixPath()
 	}
 
-	w.stream = fsevents.EventStream{
+	w.stream = &fsevents.EventStream{
 		Paths:   pathsToWatch,
 		Latency: DefaultLatency,
 		Flags:   fsevents.FileEvents | fsevents.IgnoreSelf,
