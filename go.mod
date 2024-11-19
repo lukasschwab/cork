@@ -4,7 +4,7 @@ go 1.23.3
 
 require (
 	github.com/fatih/color v1.18.0
-	github.com/fsnotify/fsnotify v1.8.0
+	github.com/fsnotify/fsevents v0.2.0
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 )
 

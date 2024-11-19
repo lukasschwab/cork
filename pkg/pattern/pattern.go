@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fsnotify/fsnotify"
+	"github.com/fsnotify/fsevents"
 	"github.com/lukasschwab/cork/pkg/filter"
 )
 
@@ -29,9 +29,9 @@ func (p Pattern) Filter() filter.Func {
 		panic(fmt.Errorf("invalid pattern: %w", err))
 	}
 
-	return func(e fsnotify.Event) bool {
+	return func(e fsevents.Event) bool {
 		// Pattern is valid: checked above.
-		match, _ := filepath.Match(pattern, e.Name)
+		match, _ := filepath.Match(pattern, e.Path)
 		return match
 	}
 }

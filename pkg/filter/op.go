@@ -1,11 +1,12 @@
 package filter
 
 import (
-	"github.com/fsnotify/fsnotify"
+	"github.com/fsnotify/fsevents"
 )
 
-func ByOp(op fsnotify.Op) Func {
-	return func(e fsnotify.Event) bool {
-		return e.Op.Has(op)
+// TODO: consider exposing to the CLI.
+func ByFlags(f fsevents.EventFlags) Func {
+	return func(e fsevents.Event) bool {
+		return e.Flags&f == f
 	}
 }

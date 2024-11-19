@@ -2,88 +2,68 @@
 package cork
 
 import (
-	"log"
-	"os"
-	"path/filepath"
+	"fmt"
+	"time"
 
-	"github.com/fsnotify/fsnotify"
+	"github.com/fsnotify/fsevents"
 	"github.com/lukasschwab/cork/pkg/filter"
 	"github.com/lukasschwab/cork/pkg/pattern"
 )
 
-// TODO: consider adding support for on-the-fly addition of paths, filters,
-// actions. There's support in fsnotify, but I think it adds too much complexity
-// (async registration) for an application where the config is known.
-//
-// Basically, this should be driven by the need for an async Watch function. I
-// don't actually have a need for that right now.
+const (
+	// DefaultLatency for filesystem events before processing by Watcher.
+	// fsevents docs suggest this helps debounce.
+	DefaultLatency = 200 * time.Millisecond
+)
+
+// Watcher for filesystem events.
 type Watcher struct {
 	Paths   []pattern.Pattern
 	Filters []filter.Func
 	Actions []Action
+
+	stream fsevents.EventStream
 }
 
-func (w *Watcher) handle(e fsnotify.Event) {
+// Watch events on w.Paths, filter with w.Filters, and trigger w.Actions in a
+// spawned goroutine.
+func (w *Watcher) Watch() error {
+	pathsToWatch := make([]string, len(w.Paths))
+	for i, path := range w.Paths {
+		pathsToWatch[i] = path.StaticPrefixPath()
+	}
+
+	w.stream = fsevents.EventStream{
+		Paths:   pathsToWatch,
+		Latency: DefaultLatency,
+		Flags:   fsevents.FileEvents | fsevents.IgnoreSelf,
+	}
+
+	if err := w.stream.Start(); err != nil {
+		return fmt.Errorf("can't start stream: %w", err)
+	}
+
+	go w.loop()
+	return nil
+}
+
+func (w *Watcher) loop() {
+	for eventGroup := range w.stream.Events {
+		// Handle a file at most once per batch of events.
+		handled := map[string]bool{}
+		for _, event := range eventGroup {
+			if _, ok := handled[event.Path]; !ok {
+				w.handle(event)
+				handled[event.Path] = true
+			}
+		}
+	}
+}
+
+func (w *Watcher) handle(e fsevents.Event) {
 	if filter.All(w.Filters...)(e) {
-		// Note: this is sequential rather than parallel for actions.
 		for _, a := range w.Actions {
 			a.handle(e)
-		}
-	}
-}
-
-func (w *Watcher) Watch() {
-	inner, err := fsnotify.NewWatcher()
-	if err != nil {
-		panic(err)
-	}
-
-	// Block indefinitely and handle events.
-	go func() {
-		for event := range inner.Events {
-			w.handle(event)
-
-			// Check if the event is for a directory
-			if info, err := os.Lstat(event.Name); event.Has(fsnotify.Create) && err == nil && info.IsDir() {
-				// Check if can prefix
-				isRelevant := false
-				for _, p := range w.Paths {
-					if match, _ := p.CanMatchChildrenOf(event.Name); match {
-						isRelevant = true
-						break
-					}
-				}
-				if isRelevant {
-					w.addSubdirectory(event.Name, inner)
-				}
-			}
-		}
-	}()
-
-	// TODO: discover glob-match directories upon initialization.
-	for _, p := range w.Paths {
-		for _, pathPrefix := range p.WildcardContainingDirectories() {
-			matches, err := filepath.Glob(pathPrefix)
-			if err != nil {
-				log.Panicf("Couldn't glob prefix %s", pathPrefix)
-			}
-			for _, match := range matches {
-				if err := inner.Add(match); err != nil {
-					log.Panicf("Error watching path: %v", err)
-				}
-			}
-		}
-	}
-}
-
-func (w *Watcher) addSubdirectory(path string, inner *fsnotify.Watcher) {
-	if newPattern, err := pattern.FromString(path); err != nil {
-		log.Printf("Can't watch new subdirectory: %v", err)
-	} else {
-		log.Printf("Watching new subdirectory %s", path)
-		w.Paths = append(w.Paths, newPattern)
-		if err := inner.Add(string(newPattern)); err != nil {
-			log.Printf("Can't watch new subdirectory: %v", err)
 		}
 	}
 }

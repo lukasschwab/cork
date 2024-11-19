@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -10,19 +11,16 @@ import (
 	"syscall"
 
 	"github.com/fatih/color"
-	"github.com/fsnotify/fsnotify"
+	"github.com/fsnotify/fsevents"
 	"github.com/kballard/go-shellquote"
 	"github.com/lukasschwab/cork/pkg/cork"
 	"github.com/lukasschwab/cork/pkg/filter"
 	"github.com/lukasschwab/cork/pkg/pattern"
 )
 
-var (
-	NonChmod filter.Func = filter.Not(filter.ByOp(fsnotify.Chmod))
-)
-
-// TODO: clean up logging.
-var l = log.New(os.Stdout, "", 0)
+// var (
+// 	NonChmod filter.Func = filter.Not(filter.ByOp(fsnotify.Chmod))
+// )
 
 // TODO: use lipgloss
 // Color-logging helpers.
@@ -33,7 +31,7 @@ var b = color.BlueString
 // main kicks off the arg consumption cycle, then waits for an interrupt.
 func main() {
 	pwd, _ := filepath.Abs(".")
-	l.Printf("Relative to %s:", pwd)
+	fmt.Printf(g("Relative to %s:\n"), pwd)
 
 	pairs := parse(os.Args[1:])
 	watch(pairs)
@@ -49,12 +47,13 @@ func main() {
 }
 
 type pair struct {
-	command  string
-	patterns []pattern.Pattern
+	command     string
+	rawPatterns []string
+	patterns    []pattern.Pattern
 }
 
 func (p pair) Action() cork.Action {
-	action, err := runCmd(p.command)
+	action, err := execCommandAction(p.command)
 	if err != nil {
 		log.Fatalf("Error processing target command: %v", err)
 	}
@@ -84,6 +83,7 @@ func parse(args []string) (parsed []pair) {
 			if p, err := pattern.FromString(args[0]); err != nil {
 				panic(err)
 			} else {
+				cur.rawPatterns = append(cur.rawPatterns, args[0])
 				cur.patterns = append(cur.patterns, p)
 			}
 		}
@@ -97,34 +97,33 @@ func watch(pairs []pair) {
 	actions := make([]cork.Action, len(pairs))
 
 	for i, pair := range pairs {
-		patternStrings := make([]string, 0, len(pair.patterns))
-		for _, pat := range pair.patterns {
-			patternStrings = append(patternStrings, string(pat))
-		}
-		println(g("» ['%s'] → %s", strings.Join(patternStrings, "', '"), pair.command))
+		println(g("» ['%s'] → %s", strings.Join(pair.rawPatterns, "', '"), pair.command))
 
 		patterns = append(patterns, pair.patterns...)
 		actions[i] = pair.Action()
 	}
+	println()
 
 	go func() {
 		watcher := cork.Watcher{
 			Paths:   patterns,
-			Filters: []filter.Func{NonChmod},
+			Filters: []filter.Func{},
 			Actions: actions,
 		}
-		watcher.Watch()
+		if err := watcher.Watch(); err != nil {
+			log.Fatalf("Failed to init watcher: %v", err)
+		}
 	}()
 }
 
-func runCmd(cmdString string) (cork.Action, error) {
+func execCommandAction(cmdString string) (cork.Action, error) {
 	splitCmd, err := shellquote.Split(cmdString)
 	if err != nil {
 		return cork.Action{}, err
 	}
 
-	cb := func(e fsnotify.Event) {
-		println(b("%s → %s", e.Name, cmdString))
+	callback := func(e fsevents.Event) {
+		println(b("[%d] %s → %s", e.ID, e.Path, cmdString))
 		out, err := exec.Command(splitCmd[0], splitCmd[1:]...).Output()
 		if err != nil {
 			println(r("Error:"), err.Error())
@@ -134,5 +133,5 @@ func runCmd(cmdString string) (cork.Action, error) {
 		}
 	}
 
-	return cork.Action{Callback: cb}, nil
+	return cork.Action{Callback: callback}, nil
 }
