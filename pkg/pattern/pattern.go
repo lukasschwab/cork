@@ -36,6 +36,8 @@ func (p Pattern) Filter() filter.Func {
 	}
 }
 
+// StaticPrefixPath makes a best effort at getting a low, non-wildcard path to
+// watch. The lower it is, the fewer superfluous events it'll receive.
 func (p Pattern) StaticPrefixPath() string {
 	// Drop anything after a `*` wildcard.
 	if i := strings.Index(string(p), "*"); i != -1 {
@@ -43,28 +45,4 @@ func (p Pattern) StaticPrefixPath() string {
 		return filepath.Clean(prefix)
 	}
 	return string(p)
-}
-
-func (p Pattern) WildcardContainingDirectories() []string {
-	prefixesToWildcards := []string{string(p)}
-	for i, c := range p {
-		if c == '*' {
-			prefix, _ := filepath.Split(string(p)[:i])
-			prefixesToWildcards = append(prefixesToWildcards, filepath.Clean(prefix))
-		}
-	}
-	return prefixesToWildcards
-}
-
-func (p Pattern) CanMatchChildrenOf(path string) (match bool, err error) {
-	if path, err = filepath.Abs(path); err != nil {
-		return false, fmt.Errorf("error making target path absolute: %w", err)
-	}
-
-	for prefix := string(p); prefix != "/"; prefix = filepath.Dir(prefix) {
-		if match, _ = filepath.Match(prefix, path); match {
-			return true, nil
-		}
-	}
-	return false, nil
 }

@@ -1,7 +1,6 @@
 package pattern_test
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -58,26 +57,6 @@ func TestGetStaticPrefix(t *testing.T) {
 			assert.Nil(t, err)
 			res := p.StaticPrefixPath()
 			assert.Equal(t, expected, res)
-		})
-	}
-}
-
-func TestCanMatchChildrenOf(t *testing.T) {
-	cases := map[string]string{
-		"a/b/c/**/*.txt":   "a/b/c/1",
-		"a/b/c/*/*.txt":    "a/b/c/1",
-		"./a/b/c/**/*.txt": "a/b/c/1",
-		"./a/b/c/*/*.txt":  "a/b/c/1",
-		"/a/b/c/**/*.txt":  "/a/b/c/1",
-		"/a/b/c/*/*.txt":   "/a/b/c/1",
-	}
-
-	for input, path := range cases {
-		t.Run(fmt.Sprintf("%s should match %s children", input, path), func(t *testing.T) {
-			p, _ := pattern.FromString(input)
-			canMatch, err := p.CanMatchChildrenOf(path)
-			assert.Nil(t, err)
-			assert.True(t, canMatch)
 		})
 	}
 }
